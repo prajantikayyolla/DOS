@@ -8,6 +8,7 @@ open System
 open Akka.Actor
 open Akka.Configuration
 open Akka.FSharp
+open System.Collections.Generic
 
 let squarePyramid subProblem =
 
@@ -24,13 +25,12 @@ let squarePyramid subProblem =
         let sumOfSquaresTillFirst = (bigint(a) - bigint.One) |> sumOfSquares
         let sumOfSquaresDiff = sumOfSquaresTillLast - sumOfSquaresTillFirst
         if(isPerfect (sumOfSquaresDiff |> float)) then
-            printfn "%i " a 
-    
+            printfn "%A " a 
 
 let system = ActorSystem.Create("System")
 
 let divideWork input =
-   
+
     let n, k, numActors = input
     
     let skip = int (n / numActors)
@@ -43,38 +43,39 @@ let divideWork input =
                             let rec loop() = actor {
                                 let! msg = mailbox.Receive()
                                 match msg with
-                                | (_, _, _) as subProblem -> squarePyramid subProblem
+                                | (_, _, _) as subProblem -> 
+                                                            squarePyramid subProblem
+                                                            mailbox.Sender() <! "Done"
 
                                 return! loop() }
                             loop())
 
     let workerActors = workerActorsCreator
 
+    let arr = new List<Async<obj>>()
 
     for id in 0 .. numActors - 1 do
         let windowStart = max 1 (id * skip - k + 2)
         let windowEnd = min n (id * skip + skip)
-        workerActors.Item(id) <! (windowStart, windowEnd, int(k))
+        arr.Add((workerActors.Item(id) <? (windowStart, windowEnd, int(k))))
         
-
+    arr
+    
 let bossActor = 
     spawn system "bossActor"
     <| fun mailbox ->
         let rec loop() = actor {
             let! msg = mailbox.Receive()
             match msg with
-            | (_, _, _) as input -> divideWork input
-            | _ -> printfn "Required 3 arrguments but given < 3"
+            | (_, _, _) as input -> let res = divideWork input
+                                    for r in res do
+                                        Async.RunSynchronously (r, -1) |> ignore
+                                    mailbox.Sender() <! "Done"
             return! loop() }
         loop()
 
 [<EntryPoint>]
-let main args =
-    printfn "Arguments passed to function : %A" args
-    bossActor <! "hi"
-    bossActor <! (int(args.[0]), int(args.[1]), int(4))
-    printfn "%A" bossActor
-    System.Console.ReadLine() |> ignore
+let main args =                 
+    let asyncRef = bossActor <? (int(args.[0]), int(args.[1]), int(4))
+    Async.RunSynchronously (asyncRef, -1) |> ignore
     0
-
-//bigint , actorOf , id for actors given tuple as input
