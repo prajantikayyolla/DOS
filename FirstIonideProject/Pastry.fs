@@ -34,13 +34,13 @@ type Leaf = {
 type RouteMessage = {
     NodeId : string;
     Message : string;
-    Hops : int
+    Hops : int;
+    Path : List<string>
 }
 
 let system = ActorSystem.Create("System")
 let pastryActors = new List<IActorRef>()
 let joinedActors = new List<string>()
-let completedActors = new List<string>()
 let mutable numNodes = 0
 let mutable numRequest = 0
 let b = 3
@@ -48,7 +48,6 @@ let mutable rows = 0
 let mutable columns = 0
 let u8 = Encoding.UTF8;
 let hash = MD5.Create()
-let mutable pastryMap = Map.empty
 let mutable pastryMapHashCode = Map.empty<string, IActorRef>
 let rand = System.Random()
 let mutable totalHops = 0
@@ -56,6 +55,7 @@ let mutable totalRequest = 0
 let maxHash = bigint.Parse("7777777777777777")
 let mutable requestHops = 0
 let mutable requestCompleted = 0
+let mutable maxHops = 0
 
 let getRecord msg nodeId routingTable hops interNodes = 
     {Msg = msg; NodeId = nodeId; RoutingTable = routingTable; Hops = hops; InterNodes = interNodes}
@@ -66,8 +66,8 @@ let getState nodeId routingTable leafSetSmall leafSetLarge timestamp  =
 let getLeaf nodeId = 
     {NodeId = nodeId}
 
-let getRouteMessage nodeId message hops = 
-    {NodeId = nodeId; Message = message; Hops = hops}
+let getRouteMessage nodeId message hops path = 
+    {NodeId = nodeId; Message = message; Hops = hops; Path = path}
 
 let getValueAtIndex (nodeId : string) index = 
     let ch = nodeId.[index] |> char
@@ -149,7 +149,7 @@ let getNearestNode (routingTable : string [,]) leafSetSmall leafSetLarge nodeId 
 
     for i in 0 .. routingTable.GetLength(0) - 1 do 
         for j in 0 .. routingTable.GetLength(1) - 1 do
-            if(routingTable.[i, j] <> "null" && ((min (commonPrefix routingTable.[i, j] srcNodeId) (rows - 1)) >= l)) then                
+            if(routingTable.[i, j] <> "null" && ((min (commonPrefix routingTable.[i, j] nodeId) (rows - 1)) >= l)) then                
                 distance <- bigint.Abs(bigint.Subtract(routingTable.[i, j] |> bigint.Parse, nodeId |> bigint.Parse))
                 // printfn "%A %A %A format" (routingTable.[i, j]) (nodeId) (distance)
                 if(bigint.Compare(distance, minVal) < 0) then
@@ -175,27 +175,31 @@ let updateState (srcRoutingTable : string[,]) (destRoutingTable : string[,]) des
                 else if(bigint.Compare(bigint.Abs(bigint.Subtract(srcRoutingTable.[i, j] |> bigint.Parse, destNodeId |> bigint.Parse)),bigint.Abs(bigint.Subtract(destRoutingTable.[i, j] |> bigint.Parse, destNodeId |> bigint.Parse))) < 0) then
                     destRoutingTable.[i, j] <- srcRoutingTable.[i, j]
 
-let addToLeaf leaf nodeId small = 
+let addToLeaf leaf nodeId destNodeId small = 
     // printfn "in add leaf set"
     let leafSet = Array.except ([|"null"|] |> Array.toSeq) leaf
     if not (Array.exists (fun x -> x = nodeId) leafSet) then
-        if(leafSet.Length < (columns / 2) - 1) then
+        if(leafSet.Length < (columns / 2)) then
             leaf.[Array.findIndex (fun x -> x = "null") leaf] <- nodeId
         else
             if small then
-                leaf.[Array.findIndex (fun x -> x = Array.min leaf) leaf] <- nodeId
+                let minValIndex = Array.findIndex (fun x -> x = Array.min leaf) leaf
+                if (bigint.Compare(bigint.Abs(bigint.Subtract(nodeId |> bigint.Parse, destNodeId |> bigint.Parse)),bigint.Abs(bigint.Subtract(leafSet.[minValIndex] |> bigint.Parse, destNodeId |> bigint.Parse))) < 0) then
+                    leaf.[minValIndex] <- nodeId
             else 
-                leaf.[Array.findIndex (fun x -> x = Array.max leaf) leaf] <- nodeId
+                let maxValIndex = Array.findIndex (fun x -> x = Array.max leaf) leaf
+                if (bigint.Compare(bigint.Abs(bigint.Subtract(nodeId |> bigint.Parse, destNodeId |> bigint.Parse)),bigint.Abs(bigint.Subtract(leafSet.[maxValIndex] |> bigint.Parse, destNodeId |> bigint.Parse))) < 0) then
+                    leaf.[maxValIndex] <- nodeId
 
 let updateLeaf (srcLeaf : string[]) srcNodeId (destLeaf : string[]) destNodeId small = 
     for i in 0 .. srcLeaf.Length - 1 do
         if srcLeaf.[i] <> "null" && srcLeaf.[i] <> destNodeId then
             if small && (bigint.Compare(bigint.Parse(srcLeaf.[i]), bigint.Parse(destNodeId)) < 0) then
                 // printfn "in small leaf"
-                addToLeaf destLeaf srcLeaf.[i] small
+                addToLeaf destLeaf srcLeaf.[i] destNodeId small
             else if not small && (bigint.Compare(bigint.Parse(srcLeaf.[i]), bigint.Parse(destNodeId)) > 0) then
                 // printfn "in large leaf"
-                addToLeaf destLeaf srcLeaf.[i] small
+                addToLeaf destLeaf srcLeaf.[i] destNodeId small
 
             
 
@@ -214,9 +218,6 @@ let pastryBehavior initialState nodeId (mailbox : Actor<'a>) =
             match box msg with
             | :? string as s -> 
                         match s with 
-                        | "route" -> 
-                            if(lastState = numRequest) then
-                                completedActors.Add(nodeId) |> ignore
                         | "join" ->
                             // printfn "%A %A" mailbox.Self (pastryMap.GetValueOrDefault(mailbox.Self))
                             // nodeId <- pastryMap.GetValueOrDefault(mailbox.Self)
@@ -226,6 +227,11 @@ let pastryBehavior initialState nodeId (mailbox : Actor<'a>) =
                                 let proximityNode = getProximityNode() |> pastryMapHashCode.GetValueOrDefault
                                 proximityNode <! getRecord "join" nodeId routingTable 0 (new List<String>())
                             else joinedActors.Add(nodeId)
+                        | "print" -> 
+                                    printfn "Node id : %A" nodeId
+                                    printfn "Routing table : %A" routingTable
+                                    printfn "LeafSet small : %A" leafSetSmall
+                                    printfn "LeafSet Large : %A" leafSetLarge
                         | _ -> "done" |> ignore
                         return! imp (lastState + 1)
             | :? Record as r ->
@@ -260,7 +266,7 @@ let pastryBehavior initialState nodeId (mailbox : Actor<'a>) =
                                 if(node = nodeId) then
                                     getIActorRef r.NodeId <! getRecord "arrived" r.NodeId r.RoutingTable (r.Hops + 1) r.InterNodes
                                 else 
-                                    printfn "here"
+                                    // printfn "here"
                                     getIActorRef node <! getRecord r.Msg r.NodeId r.RoutingTable (r.Hops + 1) r.InterNodes
                             else 
                                 getIActorRef r.NodeId <! getRecord "arrived" r.NodeId r.RoutingTable (r.Hops + 1) r.InterNodes
@@ -270,12 +276,23 @@ let pastryBehavior initialState nodeId (mailbox : Actor<'a>) =
                             // printfn "in arrived hops: %A for %A" r.Hops r.NodeId
                             // totalRequest <- totalRequest + 1
                             joinedActors.Add(r.NodeId)
-                            // for i in 0 .. r.InterNodes.Count - 1 do
-                            //     getIActorRef (r.InterNodes.Item(i)) <! getState nodeId routingTable leafSetSmall leafSetLarge timestamp
+                            for i in 0 .. r.InterNodes.Count - 1 do
+                                getIActorRef (r.InterNodes.Item(i)) <! getState nodeId routingTable leafSetSmall leafSetLarge timestamp
+                                getIActorRef (r.InterNodes.Item(i)) <! getLeaf nodeId
+
                             for i in 0 .. rows - 1 do
                                 for j in 0 .. columns - 1 do 
-                                    if(routingTable.[i, j] <> "null") then
+                                    if(routingTable.[i, j] <> "null" && routingTable.[i, j] <> nodeId) then
                                         getIActorRef routingTable.[i, j] <! getState nodeId routingTable leafSetSmall leafSetLarge (System.DateTime.MinValue.ToString("HH:mm:ss.ffffff"))
+                                        getIActorRef routingTable.[i, j] <! getLeaf nodeId
+
+                            for i in 0 .. leafSetSmall.Length - 1 do
+                                if(leafSetSmall.[i] <> "null") then
+                                    getIActorRef leafSetSmall.[i] <! getState nodeId routingTable leafSetSmall leafSetLarge (System.DateTime.MinValue.ToString("HH:mm:ss.ffffff"))
+                                    getIActorRef leafSetSmall.[i] <! getLeaf nodeId
+                                if(leafSetLarge.[i] <> "null") then
+                                    getIActorRef leafSetLarge.[i] <! getState nodeId routingTable leafSetSmall leafSetLarge (System.DateTime.MinValue.ToString("HH:mm:ss.ffffff"))
+                                    getIActorRef leafSetLarge.[i] <! getLeaf nodeId
 
                         | _ ->
                             "done" |> ignore
@@ -296,23 +313,28 @@ let pastryBehavior initialState nodeId (mailbox : Actor<'a>) =
                             lastUpdatedTime <- s.TimeStamp
                         if(System.DateTime.Compare(System.DateTime.Parse (map.GetValueOrDefault (mailbox.Sender())), System.DateTime.Parse lastUpdatedTime) < 0) then
                             mailbox.Sender() <! getState nodeId routingTable leafSetSmall leafSetLarge  (System.DateTime.MinValue.ToString("HH:mm:ss.ffffff"))
+                            map <- map.Add((mailbox.Sender()), timestamp)
+                            lastUpdatedTime <- s.TimeStamp
                     else 
                         updateState s.RoutingTable routingTable nodeId s.NodeId
                         updateLeaf s.LeafSetSmall s.NodeId leafSetSmall nodeId true
                         updateLeaf s.LeafSetLarge s.NodeId leafSetLarge nodeId false
-                        lastUpdatedTime <- s.TimeStamp                    
-                // printfn "after update %A %A" leafSetSmall leafSetLarge
+                        lastUpdatedTime <- s.TimeStamp   
+                // printfn "map is %A" map  
+                // printfn "time is %A" timestamp               
+                // printfn "after update for %A from %A %A %A" nodeId s.NodeId leafSetSmall leafSetLarge
                 return! imp lastState
             | :? Leaf as l -> 
                         if(bigint.Compare(bigint.Parse(l.NodeId), bigint.Parse(nodeId)) < 0) then
-                            addToLeaf leafSetSmall l.NodeId true
+                            addToLeaf leafSetSmall l.NodeId nodeId true
                         else if(bigint.Compare(bigint.Parse(l.NodeId), bigint.Parse(nodeId)) > 0) then
-                            addToLeaf leafSetLarge l.NodeId false
+                            addToLeaf leafSetLarge l.NodeId nodeId false
                         return! imp lastState
             | :? RouteMessage as r -> 
                     
                     match r.Message with
-                    | "route" ->
+                    | "route" ->    
+                                    r.Path.Add(nodeId) |> ignore
                                     let mutable node = isInLeafSet leafSetSmall leafSetLarge r.NodeId nodeId
                                     let foundInLeaf = node <> "null"
                                     if(node = "null") then
@@ -322,15 +344,19 @@ let pastryBehavior initialState nodeId (mailbox : Actor<'a>) =
                                     
                                     if(node <> "null") then
                                         if(node = nodeId) then
-                                            getIActorRef nodeId <! getRouteMessage r.NodeId "completed" (r.Hops + 1)
+                                            getIActorRef nodeId <! getRouteMessage r.NodeId "completed" (r.Hops + 1) r.Path
                                         else 
-                                            getIActorRef node <! getRouteMessage r.NodeId "route" (r.Hops + 1)
+                                            getIActorRef node <! getRouteMessage r.NodeId "route" (r.Hops + 1) r.Path
                                     else 
-                                        getIActorRef nodeId <! getRouteMessage r.NodeId "completed" (r.Hops + 1)
-                                    printfn "routing for %A from %A to %A with %A hops" r.NodeId nodeId node r.Hops
+                                        getIActorRef nodeId <! getRouteMessage r.NodeId "completed" (r.Hops + 1) r.Path
+                                    // printfn "routing for %A from %A to %A with %A hops" r.NodeId nodeId node r.Hops
                     | "completed" ->
+                                    // printfn "Routing completed for %A with path %A" r.NodeId r.Path
                                     requestHops <- requestHops + r.Hops
                                     requestCompleted <- requestCompleted + 1
+                                    maxHops <- max maxHops r.Hops
+                                    
+                                    // printfn "in %A" requestCompleted
                     | _           ->
                                     "done" |> ignore
                     return! imp lastState
@@ -353,54 +379,59 @@ let getHash () =
         hash <- hash + (rand.Next(range) |> string)
     hash
 
+let getHashRoute () = 
+    let mutable hash = "" 
+    let range = Math.Pow(2.0, b |> double) |> int
+    for i in 0 .. 14 do 
+        hash <- hash + (rand.Next(range) |> string)
+    hash
+
 let pastryActorsCreator () = 
-    printfn "creating actors"
-    let a = ["1234567890123456"; "1230456789123456"; "1203456789123456"; "1023456789123456"]
-    let b = ["1234567653123456"]
+    // printfn "creating actors"
+    // let a = ["1234567890123456"; "1230456789123456"; "1203456789123456"; "1023456789123456"]
+    // let b = ["1234567653123456"]
+    let m = Math.Pow(2.0, b |> float) |> int
     for i in 0 .. numNodes - 1 do        
         // printfn "%A" actor
         // let nodeId = actor.Path |> string |> getHashCode
         // let nodeId = getHash()
         let mutable nodeId = "null"
-        if(0 <= i && i < a.Length) then
-            nodeId <- a.[i]
-        else if(i = numNodes - 1) then
-            nodeId <- b.[0]
-        else 
-            nodeId <- getHash()
+        // if(0 <= i && i < a.Length) then
+        //     nodeId <- a.[i]
+        // else if(i = numNodes - 1) then
+        //     nodeId <- b.[0]
+        // else 
+        nodeId <- string(i % m) + getHashRoute()
 
         let actor = spawn system ("pastryActor" + string(i)) (pastryBehavior 0 nodeId)
           
-        printfn "%A" nodeId
+        // printfn "%A" nodeId
         pastryActors.Add(actor)        
-        pastryMap <- pastryMap.Add(actor, nodeId)
         pastryMapHashCode <- pastryMapHashCode.Add(nodeId, actor)
-        
-let shuffle () = 
-    printfn "shuffling"
-    for i in 0 .. numNodes - 1 do
-        let randomIndex1 = rand.Next(numNodes)
-        let randomIndex2 = rand.Next(numNodes)
-        let temp = pastryActors.Item(randomIndex1)
-        //try to modify this
-        pastryActors.Insert(randomIndex1, pastryActors.Item(randomIndex2))
-        pastryActors.RemoveAt(randomIndex1 + 1)
-        pastryActors.Insert(randomIndex2, temp)
-        pastryActors.RemoveAt(randomIndex2 + 1)
 
 let joinNetwork () = 
-    printfn "joining network"
+    // printfn "joining network"
     for i in 0 .. numNodes - 1 do
         while joinedActors.Count < i do
             null |> ignore
         pastryActors.Item(i) <! "join"
 
-let route() = 
+let printStates() = 
     for i in 0 .. numNodes - 1 do
-        for j in 0 .. numRequest - 1 do 
-            pastryActors.[i] <! getRouteMessage (getHash()) "route" 0
+        pastryActors.[i] <! "print"
+        Threading.Thread.Sleep(100)
+        
 
+let route() = 
+    // printfn "routing network"
+    let m = Math.Pow(2.0, b |> float) |> int
+    for i in 0 .. numRequest - 1 do
+        Threading.Thread.Sleep(1000)
+        for j in 0 .. numNodes - 1 do 
+            pastryActors.[i] <! getRouteMessage (string(j % m) + getHashRoute()) "route" 0 (new List<string>())
 
+let getTotalRequests() = 
+    totalRequest
 
 [<EntryPoint>]
 let main args =                 
@@ -411,13 +442,18 @@ let main args =
     rows <- Math.Ceiling(numerator / denominator) |> int
     columns <- b |> float |> (fun x -> Math.Pow(2.0, x)) |> int
     pastryActorsCreator()
-    // shuffle()
     joinNetwork()
+    // printStates()
     route()
-    Console.ReadLine() |> ignore
-    printfn "joining %A %A" (totalHops / numNodes) totalHops
-    printfn "%A" joinedActors.Count
-    printfn "routing %A %A %A" (requestHops / (numNodes * numRequest)) requestHops requestCompleted
+    let mutable exit = false
+    let tr = numRequest * numNodes
+    System.Threading.Thread.Sleep(numRequest)
+    // printfn "joining with avg hops of %A and total hops registered for joining is %A" (float totalHops / float numNodes) totalHops
+    // printfn "%A" joinedActors.Count
+    printfn "Average Hops: %A" (float requestHops / float (requestCompleted))
+    // Environment.Exit 0
+    // Console.ReadLine() |> ignore
+    
     0
 
 // how to overcome join one by one
