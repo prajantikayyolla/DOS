@@ -17,6 +17,77 @@ open DataTypes
 
 let db = HASHMAP
 
+
+let registerSuccess userId = getResponse SUCCESS "SUCCESS" "Register" userId
+
+let registerBadRequest userId = getResponse BADREQUEST "BADREQUEST" "Register" userId
+
+let registerUnauthorized userId = getResponse UNAUTHORIZED "UNAUTHORIZED" "Register" userId
+
+let registerNotAcceptable userId = getResponse NOTACCEPTABLE "NOTACCEPTABLE" "Register" userId
+
+let registerFailed userId = getResponse FAILED "FAILED" "Register" userId
+
+let logInSuccess userId = getResponse SUCCESS "SUCCESS" "LogIn" userId
+
+let logInBadRequest userId = getResponse BADREQUEST "BADREQUEST" "LogIn" userId
+
+let logInUnauthorized userId = getResponse UNAUTHORIZED "UNAUTHORIZED" "LogIn" userId
+
+let logInNotAcceptable userId = getResponse NOTACCEPTABLE "NOTACCEPTABLE" "LogIn" userId
+
+let logInFailed userId = getResponse FAILED "FAILED" "LogIn" userId
+
+let subscribeSuccess userId = getResponse SUCCESS "SUCCESS" "Subscribe" userId
+
+let subscribeBadRequest userId = getResponse BADREQUEST "BADREQUEST" "Subscribe" userId
+
+let subscribeUnauthorized userId = getResponse UNAUTHORIZED "UNAUTHORIZED" "Subscribe" userId
+
+let subscribeNotAcceptable userId = getResponse NOTACCEPTABLE "NOTACCEPTABLE" "Subscribe" userId
+
+let subscribeFailed userId = getResponse FAILED "FAILED" "Subscribe" userId
+
+let tweetSuccess userId = getResponse SUCCESS "SUCCESS" "Tweet" userId
+
+let tweetBadRequest userId = getResponse BADREQUEST "BADREQUEST" "Tweet" userId
+
+let tweetUnauthorized userId = getResponse UNAUTHORIZED "UNAUTHORIZED" "Tweet" userId
+
+let tweetNotAcceptable userId = getResponse NOTACCEPTABLE "NOTACCEPTABLE" "Tweet" userId
+
+let tweetFailed userId = getResponse FAILED "FAILED" "Tweet" userId
+
+let retweetSuccess userId = getResponse SUCCESS "SUCCESS" "Retweet" userId
+
+let retweetBadRequest userId = getResponse BADREQUEST "BADREQUEST" "Retweet" userId
+
+let retweetUnauthorized userId = getResponse UNAUTHORIZED "UNAUTHORIZED" "Retweet" userId
+
+let retweetNotAcceptable userId = getResponse NOTACCEPTABLE "NOTACCEPTABLE" "Retweet" userId
+
+let retweetFailed userId = getResponse FAILED "FAILED" "Retweet" userId
+
+let querySuccess userId queryType tweets = getQueryResponse SUCCESS "SUCCESS" ("Query-"+queryType) userId tweets
+
+let queryBadRequest userId queryType tweets = getQueryResponse BADREQUEST "BADREQUEST" ("Query-"+queryType) userId tweets
+
+let queryUnauthorized userId queryType tweets = getQueryResponse UNAUTHORIZED "UNAUTHORIZED" ("Query-"+queryType) userId tweets
+
+let queryNotAcceptable userId queryType tweets = getQueryResponse NOTACCEPTABLE "NOTACCEPTABLE" ("Query-"+queryType) userId tweets
+
+let queryFailed userId queryType tweets = getQueryResponse FAILED "FAILED" ("Query-"+queryType) userId tweets
+
+let logOutSuccess userId = getResponse SUCCESS "SUCCESS" "LogOut" userId
+
+let logOutBadRequest userId = getResponse BADREQUEST "BADREQUEST" "LogOut" userId
+
+let logOutUnauthorized userId = getResponse UNAUTHORIZED "UNAUTHORIZED" "LogOut" userId
+
+let logOutNotAcceptable userId = getResponse NOTACCEPTABLE "NOTACCEPTABLE" "LogOut" userId
+
+let logOutFailed userId = getResponse FAILED "FAILED" "LogOut" userId
+
 let configuration = 
                     ConfigurationFactory.ParseString(
                         @"akka {
@@ -43,15 +114,15 @@ let registerActor (mailbox : Actor<'a>) =
         | :? Credentials as credentials ->
             match registeredUser credentials.UserName credentials.Password db with
             | true ->
-                mailbox.Sender() <! NOTACCEPTABLE
+                mailbox.Sender() <! registerNotAcceptable credentials.UserName
             | false ->
                 match addUser credentials.UserName credentials.Password db with
                 | true ->
-                    mailbox.Sender() <! SUCCESS
+                    mailbox.Sender() <! registerSuccess credentials.UserName
                 | false ->
-                    mailbox.Sender() <! FAILED                
+                    mailbox.Sender() <! registerFailed credentials.UserName               
         | _ ->
-            mailbox.Sender() <! BADREQUEST
+            mailbox.Sender() <! registerBadRequest null
         mailbox.Self.GracefulStop |> ignore
         return! loop()
     }
@@ -81,17 +152,17 @@ let logInActor (mailbox: Actor<'a>) =
                 | true ->
                         match loggedInUser c.UserName db with
                         | true -> 
-                            mailbox.Sender() <! NOTACCEPTABLE//406
+                            mailbox.Sender() <! logInNotAcceptable c.UserName//406
                         | false ->
                             match logInUser c.UserName c.Password db with        
                             | true -> 
-                                mailbox.Sender() <! SUCCESS//200
+                                mailbox.Sender() <! logInSuccess c.UserName//200
                             | false ->
-                                mailbox.Sender() <! FAILED//500
+                                mailbox.Sender() <! logInFailed c.UserName//500
                 | false ->
-                        mailbox.Sender() <! UNAUTHORIZED//401
+                        mailbox.Sender() <! logInUnauthorized c.UserName//401
             | _ ->
-                mailbox.Sender() <! BADREQUEST//400
+                mailbox.Sender() <! logInBadRequest null//400
             mailbox.Self.GracefulStop |> ignore
             return! loop ()
         }
@@ -145,22 +216,19 @@ let tweetActor (mailbox: Actor<'a>) =
         let! message = mailbox.Receive ()
         printfn "tweet actor: %A" message
         match box message with 
-        | :? DataTypes.Tweet as tweet ->
-            match loggedInUser tweet.UserId db with
+        | :? DataTypes.TweetInfo as tweetInfo ->
+            match loggedInUser tweetInfo.UserId db with
             | true ->
-                match isNull tweet.IsRetweet with
-                | true ->
-                    processTweetAPI <! tweet
-                    addTweet tweet db //********************************check failure
-                    addTweetToUser tweet db
-                    // printfn "%A %A %A %A" hashTagDB mentionDB tweetDB userTweetsDB
-                    mailbox.Sender() <! SUCCESS//200
-                | false ->
-                    mailbox.Sender() <! BADREQUEST//400
+                let tweet = getTweet ((Guid.NewGuid()).ToString()) tweetInfo.UserId tweetInfo.Content (System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")) null
+                processTweetAPI <! tweet
+                addTweet tweet db //********************************check failure
+                addTweetToUser tweet db
+                // printfn "%A %A %A %A" hashTagDB mentionDB tweetDB userTweetsDB
+                mailbox.Sender() <! tweetSuccess tweetInfo.UserId//200
             | false -> 
-                mailbox.Sender() <! UNAUTHORIZED//401
+                mailbox.Sender() <! tweetUnauthorized tweetInfo.UserId//401
         | _ ->
-            mailbox.Sender() <! BADREQUEST//400
+            mailbox.Sender() <! tweetBadRequest null//400
         mailbox.Self.GracefulStop |> ignore
         return! loop ()
     }
@@ -189,19 +257,19 @@ let subscribeActor (mailbox: Actor<'a>) =
                 | true ->
                     match subscribedUser follow db with
                     | true ->
-                        mailbox.Sender() <! NOTACCEPTABLE//406
+                        mailbox.Sender() <! subscribeNotAcceptable follow.UserId//406
                     | false ->
                         match addSubscriber follow db with
                         | true ->
-                            mailbox.Sender() <! SUCCESS//200
+                            mailbox.Sender() <! subscribeSuccess follow.UserId//200
                         | false ->
-                            mailbox.Sender() <! FAILED//500
+                            mailbox.Sender() <! subscribeFailed follow.UserId//500
                 | false -> 
-                    mailbox.Sender() <! UNAUTHORIZED//401
+                    mailbox.Sender() <! subscribeUnauthorized follow.UserId//401
             | false ->
-                mailbox.Sender() <! UNAUTHORIZED//401
+                mailbox.Sender() <! subscribeBadRequest follow.UserId//401
         | _ ->
-            mailbox.Sender() <! BADREQUEST//400
+            mailbox.Sender() <! subscribeBadRequest null//400
         mailbox.Self.GracefulStop |> ignore
         return! loop ()
     }
@@ -223,22 +291,23 @@ let retweetActor (mailbox: Actor<'a>) =
         let! message = mailbox.Receive ()
         printfn "retweet actor: %A" message
         match box message with 
-        | :? DataTypes.Tweet as tweet ->
-            match loggedInUser tweet.UserId db with
+        | :? DataTypes.Retweet as retweet ->
+            match loggedInUser retweet.UserId db with
             | true ->
-                match not (isNull tweet.IsRetweet) with
+                match tweetIdExists retweet.TweetId db with
                 | true ->
+                    let tweet = getTweet ((Guid.NewGuid()).ToString()) retweet.UserId (getContent retweet.TweetId db) (System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")) retweet.TweetId
+                    processTweetAPI <! tweet
                     addRetweet tweet db
                     addTweetToUser tweet db
-                    mailbox.Sender() <! SUCCESS
+                    // printfn "%A %A %A %A" hashTagDB mentionDB tweetDB userTweetsDB
+                    mailbox.Sender() <! retweetSuccess retweet.UserId//200
                 | false ->
-                    mailbox.Sender() <! BADREQUEST//400 asking retweet actor with original tweet
-                // printfn "%A %A %A %A" hashTagDB mentionDB tweetDB userTweetsDB
-                mailbox.Sender() <! SUCCESS//200
+                    mailbox.Sender() <! retweetBadRequest retweet.UserId//400
             | false -> 
-                mailbox.Sender() <! UNAUTHORIZED//401
+                mailbox.Sender() <! retweetUnauthorized retweet.UserId//401
         | _ ->
-            mailbox.Sender() <! BADREQUEST//400
+            mailbox.Sender() <! retweetBadRequest null//400
         mailbox.Self.GracefulStop |> ignore
         return! loop ()
     }
@@ -255,10 +324,91 @@ let retweetParentActor (mailbox: Actor<'a>) =
     }
     loop ()
 
-let echoActor (mailbox: Actor<'a>) =         
+let queryActor (mailbox: Actor<'a>) = 
     let rec loop () = actor {
         let! message = mailbox.Receive ()
-        mailbox.Sender() <! DataTables.echo
+        printfn "query actor: %A" message
+        match box message with 
+        | :? DataTypes.Query as query ->
+            match loggedInUser query.UserId db with
+            | true ->
+                match query.QueryType with
+                | "subscribedTo" ->
+                    let tweets = getTweetsBySubcribedTo query db
+                    mailbox.Sender() <! querySuccess query.UserId query.QueryType tweets
+                | "hashTag" ->
+                    match query.QueryContent.StartsWith "#" with
+                    | true ->
+                        let tweets = getTweetsByHashTag query db
+                        mailbox.Sender() <! querySuccess query.UserId query.QueryType tweets
+                    | false -> 
+                        mailbox.Sender() <! queryBadRequest query.UserId query.QueryType (new List<Tweet>())
+                | "mention" ->
+                    let tweets = getTweetsByMention query db
+                    mailbox.Sender() <! querySuccess query.UserId query.QueryType tweets
+                | _ ->
+                    mailbox.Sender() <! queryBadRequest query.UserId query.QueryType (new List<Tweet>())
+            | false -> 
+                mailbox.Sender() <! queryUnauthorized query.UserId query.QueryType (new List<Tweet>())//401
+        | _ ->
+            mailbox.Sender() <! queryBadRequest null null (new List<Tweet>())//400
+        mailbox.Self.GracefulStop |> ignore
+        return! loop ()
+    }
+    loop ()
+
+let queryParentActor (mailbox: Actor<'a>) = 
+    let mutable id = 0         
+    let rec loop () = actor {
+        let! message = mailbox.Receive ()  
+        let actor1 = spawn system ("queryActor" + string(id)) queryActor                     
+        actor1.Forward message
+        id <- id + 1
+        return! loop ()
+    }
+    loop ()
+
+let logOutActor (mailbox: Actor<'a>) = 
+        let rec loop () = actor {
+            let! message = mailbox.Receive ()
+            printfn "logOut actor: %A" message
+            match box message with 
+            | :? Credentials as c ->
+                match registeredUser c.UserName c.Password db with
+                | true ->
+                    match loggedInUser c.UserName db with
+                    | true ->
+                        match logOut c.UserName db with
+                        | true ->
+                            mailbox.Sender() <! logOutSuccess c.UserName//200
+                        | false ->
+                            mailbox.Sender() <! logOutFailed c.UserName//200
+                    | false ->                            
+                        mailbox.Sender() <! logOutNotAcceptable c.UserName//406
+                | false ->
+                        mailbox.Sender() <! logOutUnauthorized c.UserName//401
+            | _ ->
+                mailbox.Sender() <! logOutBadRequest null//400
+            mailbox.Self.GracefulStop |> ignore
+            return! loop ()
+        }
+        loop ()
+
+let logOutParentActor (mailbox: Actor<'a>) = 
+    let mutable id = 0         
+    let rec loop () = actor {
+        let! message = mailbox.Receive ()  
+        let actor1 = spawn system ("logOutActor" + string(id)) logOutActor                     
+        actor1.Forward message
+        id <- id + 1
+        return! loop ()
+    }
+    loop ()
+
+let echoActor (mailbox: Actor<'a>) =         
+    let rec loop () = actor {
+        let! message = mailbox.Receive()
+        mailbox.Sender() <! echo()
         return! loop ()
     }
     loop ()
@@ -275,7 +425,13 @@ let subscribeAPI1 = spawn system "subscribeActor" subscribeParentActor
 
 let echoAPI1 = spawn system "echoActor" echoActor
 
-printfn "%A %A %A %A %A" registerAPI1 logInAPI1 tweetAPI1 subscribeAPI1 echoAPI1
+let retweetAPI1 = spawn system "retweetActor" retweetParentActor
+
+let queryAPI1 = spawn system "queryActor" queryParentActor
+
+let logOutAPI1 = spawn system "logOutActor" logOutParentActor
+
+printfn "%A %A %A %A %A %A %A %A" registerAPI1 logInAPI1 tweetAPI1 subscribeAPI1 retweetAPI1 echoAPI1 queryAPI1 logOutAPI1
 
 Console.ReadLine()
 

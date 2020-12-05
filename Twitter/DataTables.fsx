@@ -29,32 +29,46 @@ let dateTimeType = System.Type.GetType("System.DateTime")
 let dataSet = new DataSet()
 
 let registerTable = new DataTable("registerDB")
-registerTable.Columns.Add(new DataColumn("UserId", stringType))
-registerTable.Columns.Add(new DataColumn("Password", stringType))
-registerTable.Columns.Add(new DataColumn("Status", stringType))
+registerTable.Columns.Add(new DataColumn("UserId", typeof<string>))
+registerTable.Columns.Add(new DataColumn("Password", typeof<string>))
+registerTable.Columns.Add(new DataColumn("Status", typeof<string>))
 registerTable.PrimaryKey <- [|registerTable.Columns.["UserId"]|]
 dataSet.Tables.Add registerTable
 
 let tweetTable = new DataTable("tweetDB")
-tweetTable.Columns.Add(new DataColumn("TweetId", stringType))
-tweetTable.Columns.Add(new DataColumn("UserId", stringType))
-tweetTable.Columns.Add(new DataColumn("Content", stringType))
-tweetTable.Columns.Add(new DataColumn("TimeStamp", dateTimeType))
-tweetTable.Columns.Add(new DataColumn("IsRetweet", booleanType))
-tweetTable.PrimaryKey <- [|registerTable.Columns.["TweetId"]|]
+tweetTable.Columns.Add(new DataColumn("TweetId", typeof<string>))
+tweetTable.Columns.Add(new DataColumn("UserId", typeof<string>))
+tweetTable.Columns.Add(new DataColumn("Content", typeof<string>))
+tweetTable.Columns.Add(new DataColumn("TimeStamp", typeof<string>))
+tweetTable.Columns.Add(new DataColumn("IsRetweetOf", typeof<string>))
+// tweetTable.PrimaryKey <- [|tweetTable.Columns.["TweetId"];tweetTable.Columns.["UserId"] |]
+let (pk : DataColumn[]) = [|tweetTable.Columns.["TweetId"]; tweetTable.Columns.["UserId"]|]
+let (uq : UniqueConstraint) = UniqueConstraint pk  
+// tweetTable.Constraints.Add uq
 dataSet.Tables.Add tweetTable
 
 let hashTagMentionTable = new DataTable("hashTagMentionDB")
-hashTagMentionTable.Columns.Add(new DataColumn("HashTagMention", stringType))
-hashTagMentionTable.Columns.Add(new DataColumn("TweetId", stringType))
+hashTagMentionTable.Columns.Add(new DataColumn("HashTagMention", typeof<string>))
+hashTagMentionTable.Columns.Add(new DataColumn("TweetId", typeof<string>))
 hashTagMentionTable.PrimaryKey <- [|hashTagMentionTable.Columns.["HashTagMention"]; hashTagMentionTable.Columns.["TweetId"]|]
 dataSet.Tables.Add hashTagMentionTable
 
 let followingFollowersTable = new DataTable("followingFollowersDB")
-followingFollowersTable.Columns.Add(new DataColumn("UserId", stringType))
-followingFollowersTable.Columns.Add(new DataColumn("FollowingId", stringType))
+followingFollowersTable.Columns.Add(new DataColumn("UserId", typeof<string>))
+followingFollowersTable.Columns.Add(new DataColumn("FollowingId", typeof<string>))
 followingFollowersTable.PrimaryKey <- [|followingFollowersTable.Columns.["UserId"]; followingFollowersTable.Columns.["FollowingId"]|]
 dataSet.Tables.Add followingFollowersTable
+
+let registerTweetRelation = DataRelation("tweetRegister", registerTable.Columns.["UserId"], tweetTable.Columns.["UserId"])
+dataSet.Relations.Add(registerTweetRelation)
+let tweetHashTagMentionRelation = DataRelation("tweetHashTagMention", tweetTable.Columns.["TweetId"], hashTagMentionTable.Columns.["TweetId"])
+dataSet.Relations.Add(tweetHashTagMentionRelation)
+let registerFollowingFollowersRelation = DataRelation("registerFollowingFollowers", registerTable.Columns.["UserId"], followingFollowersTable.Columns.["UserId"])
+dataSet.Relations.Add(registerFollowingFollowersRelation)
+let registerFollowingFollowersRelation1 = DataRelation("registerFollowingFollowers1", registerTable.Columns.["UserId"], followingFollowersTable.Columns.["FollowingId"])
+dataSet.Relations.Add(registerFollowingFollowersRelation1)
+
+let defaultTweet = getTweet null null null null null
 
 let addUser userName password db = 
     // printfn "%A %A" userName password
@@ -63,8 +77,10 @@ let addUser userName password db =
         registerDB.TryAdd(userName, password) |> ignore
         registerDB.ContainsKey userName 
     | "datatables" ->
-        let a = registerTable.Rows.Add(userName, password, "Inactive")
-        not (isNull a)
+        lock(registerTable) (fun () ->
+            let a = registerTable.Rows.Add(userName, password, "InActive")
+            not (isNull a)
+            )
     | _ -> false
 
 let registeredUser userName password db = 
@@ -81,7 +97,7 @@ let loggedInUser userName db =
     | "map" ->
         logInDB.Contains userName
     | "datatables" ->
-        let rows = registerTable.Select(String.Format("UserId = '{0}' AND Status = '{2}'", userName, "Active"))
+        let rows = registerTable.Select(String.Format("UserId = '{0}' AND Status = '{1}'", userName, "Active"))
         rows.Length <> 0
     | _ -> false
 
@@ -93,7 +109,7 @@ let logInUser userName password db =
     | "datatables" ->
         let rows = registerTable.Select(String.Format("UserId = '{0}' AND Password = '{1}'", userName, password))
         for row in rows do
-            row.["Status"] <- "Active"
+            row.[2] <- "Active"
         let checkedIfLoggedIn = registerTable.Select(String.Format("UserId = '{0}' AND Password = '{1}' AND Status = '{2}'", userName, password, "Active"))
         checkedIfLoggedIn.Length <> 0
     | _ -> false
@@ -115,7 +131,9 @@ let addTweet tweet db =
     | "map" ->
         tweetDB.TryAdd(tweet.Id, tweet) |> ignore
     | "datatables" ->
-        tweetTable.Rows.Add(tweet.Id, tweet.UserId, tweet.Content, tweet.TimeStamp, tweet.IsRetweet) |> ignore
+        lock(tweetTable) (fun () ->
+        tweetTable.Rows.Add(tweet.Id, tweet.UserId, tweet.Content, tweet.TimeStamp, tweet.IsRetweetOf) |> ignore
+        )        
     | _ -> ()
 
 let addTweetToUser (tweet : Tweet) db =
@@ -131,7 +149,7 @@ let subscribedUser (follow : Follow) db =
     | "map" ->
         followingDB.GetOrAdd(follow.UserId, new HashSet<string>()).Contains follow.FollowId
     | "datatables" ->
-        let rows = followingFollowersTable.Select(String.Format("UserId = '{0}' AND FollowingId = '{2}'", follow.UserId, follow.FollowId))
+        let rows = followingFollowersTable.Select(String.Format("UserId = '{0}' AND FollowingId = '{1}'", follow.UserId, follow.FollowId))
         rows.Length <> 0
     | _ -> false
 
@@ -143,7 +161,7 @@ let addSubscriber (follow : Follow) db =
         followingDB.[follow.UserId].Contains follow.FollowId && followersDB.[follow.FollowId].Contains follow.UserId 
     | "datatables" ->
         followingFollowersTable.Rows.Add(follow.UserId, follow.FollowId) |> ignore
-        let rows = followingFollowersTable.Select(String.Format("UserId = '{0}' AND FollowingId = '{2}'", follow.UserId, follow.FollowId))
+        let rows = followingFollowersTable.Select(String.Format("UserId = '{0}' AND FollowingId = '{1}'", follow.UserId, follow.FollowId))
         rows.Length <> 0
     | _ -> false
 
@@ -159,9 +177,120 @@ let bothRegisteredUser (follow : Follow) db =
 let addRetweet tweet db = 
     match db with
     | "map" ->
-        ()
+        tweetDB.TryAdd(tweet.Id, tweet) |> ignore
     | "datatables" ->
-        tweetTable.Rows.Add(tweet.Id, tweet.UserId, tweet.Content, tweet.TimeStamp, tweet.IsRetweet) |> ignore
+        lock(tweetTable) (fun () -> 
+        tweetTable.Rows.Add(tweet.Id, tweet.UserId, tweet.Content, tweet.TimeStamp, tweet.IsRetweetOf) |> ignore
+        )
     | _ -> ()
 
-let echo = [|followingDB; followersDB|]
+let getContent tweetId db = 
+    match db with
+    | "map" ->
+        if tweetDB.ContainsKey tweetId then
+            tweetDB.GetOrAdd(tweetId, defaultTweet).Content//********check this
+        else 
+            String.Empty
+    | "datatables" ->
+        let rows = tweetTable.Select(String.Format("TweetId = '{0}'", tweetId))
+        if rows.Length = 0 then
+            String.Empty
+        else
+            rows.[0].["Content"] |> string//*****************check this
+    | _ -> String.Empty
+
+let tweetIdExists tweetId db = 
+    match db with
+    | "map" ->
+        tweetDB.ContainsKey tweetId
+    | "datatables" ->
+        let rows = tweetTable.Select(String.Format("TweetId = '{0}'", tweetId))
+        rows.Length <> 0
+    | _ -> false
+
+let getTweetsByMention (query : Query) db = 
+    match db with
+    | "map" ->
+        let tweetsByMention = mentionDB.GetOrAdd("@" + query.UserId, new List<String>())
+        let tweets = new List<Tweet>()
+        //All tweets
+        // for tweetId in tweetsByMention do 
+        //     tweets.Add(tweetDB.[tweetId])
+        // last 10
+        for i in Math.Max(0, (tweetsByMention.Count - 10)) .. (tweetsByMention.Count - 1) do
+            tweets.Add(tweetDB.[tweetsByMention.Item(i)])
+        tweets
+    | "datatables" ->
+        let tweetsByMention = hashTagMentionTable.Select(String.Format("HashTagMention = '{0}'", "@" + query.UserId))
+        let tweets = new List<Tweet>()
+        for row in tweetsByMention do 
+            let tweetRow = tweetTable.Select(String.Format("TweetId = '{0}' AND IsRetweet = '{1}'", row.["TweetId"], false))
+            for row in tweetRow do
+                tweets.Add (getTweet (string(row.["TweetId"])) (string(row.["UserId"])) (string(row.["Content"])) (((string) row.["TimeStamp"])) ((string row.["IsRetweetOf"])))
+        tweets
+    | _ -> new List<Tweet>()
+
+let getTweetsBySubcribedTo (query : Query) db = 
+    match db with
+    | "map" ->
+        let tweets = new List<Tweet>()
+        for user in followingDB.GetOrAdd(query.UserId, new HashSet<string>()) do
+            //All tweets
+            // for tweet in userTweetsDB.GetOrAdd(user, new List<string>()) do
+            //     tweets.Add tweetDB.[tweet]
+            //last tweet
+            let userTweets = userTweetsDB.GetOrAdd(user, new List<string>())
+            if userTweets.Count <> 0 then
+                tweets.Add(tweetDB.[userTweets.Item(userTweets.Count - 1)])
+        tweets
+    | "datatables" ->
+        let tweets = new List<Tweet>()
+        for user in followingFollowersTable.Select(String.Format("UserId = '{0}'", query.UserId)) do
+            for row in tweetTable.Select(String.Format("UserId = '{0}'", user.["FollowingId"])) do
+                tweets.Add (getTweet (string(row.["TweetId"])) (string(row.["UserId"])) (string(row.["Content"])) (((string) row.["TimeStamp"])) ((string row.["IsRetweetOf"])))
+        tweets
+    | _ -> new List<Tweet>()
+
+let getTweetsByHashTag (query : Query) db = 
+    match db with
+    | "map" ->
+        let tweetsByHashTag = hashTagDB.GetOrAdd(query.QueryContent, new List<string>())
+        let tweets = new List<Tweet>()
+        //All tweets
+        // for tweetId in tweetsByHashTag do 
+        //     tweets.Add(tweetDB.[tweetId])
+        // last 10
+        for i in Math.Max(0, (tweetsByHashTag.Count - 10)) .. (tweetsByHashTag.Count - 1) do
+            tweets.Add(tweetDB.[tweetsByHashTag.Item(i)])
+
+        tweets
+    | "datatables" ->
+        let tweetsByHashTag = hashTagMentionTable.Select(String.Format("HashTagMention = '{0}'", query.QueryContent))
+        let tweets = new List<Tweet>()
+        for row in tweetsByHashTag do 
+            let tweetRow = tweetTable.Select(String.Format("TweetId = '{0}' AND IsRetweet = '{1}'", row.["TweetId"], false))
+            for row in tweetRow do
+                tweets.Add (getTweet (string(row.["TweetId"])) (string(row.["UserId"])) (string(row.["Content"])) (((string) row.["TimeStamp"])) ((string row.["IsRetweetOf"])))
+        tweets
+    | _ -> new List<Tweet>()
+
+let logOut userId db = 
+    match db with
+    | "map" ->
+        logInDB.Remove userId |> ignore
+        not(logInDB.Contains userId)
+    | "datatables" ->
+        let rows = registerTable.Select(String.Format("UserId = '{0}'", userId))
+        for row in rows do
+            row.[2] <- "InActive"
+        let checkedIfLoggedOut = registerTable.Select(String.Format("UserId = '{0}'AND Status = '{2}'", userId, "InActive"))
+        checkedIfLoggedOut.Length <> 0
+    | _ -> false
+
+let echo () = 
+    // let rows = tweetTable.Rows
+    // rows.[0].["TweetId"] |> string
+    let rand = Random()
+    let vale = List tweetDB.Keys
+    vale.Item(rand.Next(vale.Count))
+

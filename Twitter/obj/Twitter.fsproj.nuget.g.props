@@ -17,6 +17,7 @@
   </PropertyGroup>
   <PropertyGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
     <PkgFSharp_Core Condition=" '$(PkgFSharp_Core)' == '' ">C:\Users\praja\.nuget\packages\fsharp.core\4.7.2</PkgFSharp_Core>
+    <PkgMathNet_Numerics_FSharp Condition=" '$(PkgMathNet_Numerics_FSharp)' == '' ">C:\Users\praja\.nuget\packages\mathnet.numerics.fsharp\4.12.0</PkgMathNet_Numerics_FSharp>
     <PkgAkka Condition=" '$(PkgAkka)' == '' ">C:\Users\praja\.nuget\packages\akka\1.4.10</PkgAkka>
     <PkgAkka_Streams Condition=" '$(PkgAkka_Streams)' == '' ">C:\Users\praja\.nuget\packages\akka.streams\1.4.10</PkgAkka_Streams>
     <PkgAkka_Remote Condition=" '$(PkgAkka_Remote)' == '' ">C:\Users\praja\.nuget\packages\akka.remote\1.4.10</PkgAkka_Remote>

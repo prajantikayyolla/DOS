@@ -55,6 +55,11 @@
               "target": "Package",
               "version": "[4.7.2, )",
               "generatePathProperty": true
+            },
+            "MathNet.Numerics.FSharp": {
+              "target": "Package",
+              "version": "[4.12.0, )",
+              "generatePathProperty": true
             }
           },
           "imports": [

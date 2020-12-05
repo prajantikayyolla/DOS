@@ -12,7 +12,8 @@
           "Akka.FSharp": "1.4.10",
           "Akka.Remote": "1.4.10",
           "Akka.Streams": "1.4.10",
-          "FSharp.Core": "4.7.2"
+          "FSharp.Core": "4.7.2",
+          "MathNet.Numerics.FSharp": "4.12.0"
         },
         "runtime": {
           "Twitter.dll": {}
@@ -236,6 +237,26 @@
           "lib/netstandard2.0/Google.Protobuf.dll": {
             "assemblyVersion": "3.13.0.0",
             "fileVersion": "3.13.0.0"
+          }
+        }
+      },
+      "MathNet.Numerics/4.12.0": {
+        "runtime": {
+          "lib/netstandard2.0/MathNet.Numerics.dll": {
+            "assemblyVersion": "4.12.0.0",
+            "fileVersion": "4.12.0.0"
+          }
+        }
+      },
+      "MathNet.Numerics.FSharp/4.12.0": {
+        "dependencies": {
+          "FSharp.Core": "4.7.2",
+          "MathNet.Numerics": "4.12.0"
+        },
+        "runtime": {
+          "lib/netstandard2.0/MathNet.Numerics.FSharp.dll": {
+            "assemblyVersion": "4.12.0.0",
+            "fileVersion": "4.12.0.0"
           }
         }
       },
@@ -1324,6 +1345,20 @@
       "sha512": "sha512-/6VgKCh0P59x/rYsBkCvkUanF0TeUYzwV9hzLIWgt23QRBaKHoxaaMkidEWhKibLR88c3PVCXyyrx9Xlb+Ne6w==",
       "path": "google.protobuf/3.13.0",
       "hashPath": "google.protobuf.3.13.0.nupkg.sha512"
+    },
+    "MathNet.Numerics/4.12.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-U6R74mc1PHD3HbbevY5Z6AS07toye0PBooKPpCyD9sCc5HDPlRl+lmiWl+zy8L7IEHIH0Bvkx1sVqBY++5X5eA==",
+      "path": "mathnet.numerics/4.12.0",
+      "hashPath": "mathnet.numerics.4.12.0.nupkg.sha512"
+    },
+    "MathNet.Numerics.FSharp/4.12.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-Ea7XRCvI0XpNUBCHMpNbJcyn3i9CUF2qO7g4UU6EEzNBI6ijQ9E5jc0b58v8X19x1XM56QuXXTEyGoMj7zwnFw==",
+      "path": "mathnet.numerics.fsharp/4.12.0",
+      "hashPath": "mathnet.numerics.fsharp.4.12.0.nupkg.sha512"
     },
     "Microsoft.Extensions.DependencyInjection.Abstractions/1.1.0": {
       "type": "package",
