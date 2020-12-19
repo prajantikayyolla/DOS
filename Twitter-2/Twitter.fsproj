@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="DataTypes.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Akka" Version="1.4.10" />
+    <PackageReference Include="Akka.FSharp" Version="1.4.10" />
+    <PackageReference Include="Akka.Remote" Version="1.4.10" />
+    <PackageReference Include="Akka.Streams" Version="1.4.10" />
+    <PackageReference Include="FSharp.Json" Version="0.4.0" />
+    <PackageReference Include="MathNet.Numerics.FSharp" Version="4.12.0" />
+    <PackageReference Include="Newtonsoft.Json.FSharp" Version="3.2.2" />
+    <PackageReference Include="Suave" Version="2.6.0" />
+    <!-- <PackageReference Include="Suave.Testing" Version="2.3.0-beta3" /> -->
+  </ItemGroup>
+</Project>
