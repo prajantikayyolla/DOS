@@ -1,1 +1,2 @@
 Twitter Engine Simulator using F#, Akka.net and Suave Framework
+It uses Suave Framework to provide communication over websockets.
