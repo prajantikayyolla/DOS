@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "s2/S7NbdlL39e3iF7f8B76F48JPlm+k7mm+74Km6GL7ihrCIGdj4npyEN9ATUFVG26eaNStVGx10YDcPsbKLTg==",
+  "success": true,
+  "projectFilePath": "C:\\Prajan\\Sem-3\\DOS\\DOS\\Gossip\\Gossip.fsproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\praja\\.nuget\\packages\\fsharp.core\\4.7.2\\fsharp.core.4.7.2.nupkg.sha512"
+  ],
+  "logs": []
+}
